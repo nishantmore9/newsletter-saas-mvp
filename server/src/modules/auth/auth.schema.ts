@@ -29,7 +29,15 @@ export const resetPasswordSchema = z.object({
   }),
 })
 
+export const verifyEmailSchema = z.object({
+  params: z.object({
+    token: z.string().min(1, 'Verification token is required'),
+  }),
+})
+
 export type RegisterInput = z.infer<typeof resigterSchema>['body'];
 export type LoginInput = z.infer<typeof loginSchema>['body'];
 export type ForgotPasswordInput = z.infer<typeof forgotPasswordSchema>['body'];
 export type resetPasswordInput = z.infer<typeof resetPasswordSchema>['body'];
+export type ResetPasswordParamsInput = z.infer<typeof resetPasswordSchema>['params'];
+export type VerifyEmailParamsInput = z.infer<typeof verifyEmailSchema>['params'];

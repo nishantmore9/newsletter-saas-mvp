@@ -1,6 +1,6 @@
 import { Router } from "express";
 import { resgister, login, logout, getProfile, refreshHandler, verifyEmail, forgotPassword, resetPassword } from "./auth.controller.js";
-import { resigterSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema } from "./auth.schema.js";
+import { resigterSchema, loginSchema, forgotPasswordSchema, resetPasswordSchema, verifyEmailSchema } from "./auth.schema.js";
 import { validate } from "../../middlewares/validate.js";
 import { requireAuth } from "../../middlewares/requireAuth.js";
 
@@ -11,7 +11,7 @@ router.post('/login', validate(loginSchema), login);
 router.post('/refresh', refreshHandler);
 router.post('/logout', requireAuth, logout);
 router.get('/profile', requireAuth, getProfile);
-router.get('/verify-email/:token', verifyEmail);
+router.get('/verify-email/:token', validate(verifyEmailSchema), verifyEmail);
 router.post('/forgot-password', validate(forgotPasswordSchema), forgotPassword);
 router.post('/reset-password/:token', validate(resetPasswordSchema), resetPassword);
 

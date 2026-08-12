@@ -28,6 +28,12 @@ const SubscriberRepo = {
       .limit(limit)
       .offset(offset);
   },
+
+  deleteById: async (subscriberId: string) => {
+    return await db
+      .delete(subscribers)
+      .where(eq(subscribers.id, subscriberId));
+  }
 };
 
 export default SubscriberRepo;

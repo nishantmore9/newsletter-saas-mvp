@@ -1,124 +1,93 @@
 import { Request, Response } from "express";
-import  AuthService  from "../../services/auth.service.js";
+import  AuthService  from "./auth.service.js";
 import { AuthRequest } from "../../middlewares/requireAuth.js";
 import { db } from "../../db/index.js";
 import { users } from "../../db/schema.js";
 import { eq } from "drizzle-orm";
 import { AppError } from "../../utils/ApiError.js";
+import { getValidatedData } from "../../utils/validateData.js";
+import {
+  ForgotPasswordInput,
+  LoginInput,
+  RegisterInput,
+  resetPasswordInput,
+  ResetPasswordParamsInput,
+  VerifyEmailParamsInput,
+} from "./auth.schema.js";
 
 export const resgister = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const user = await AuthService.register(req.body);
-    res.status(201).json({
-      status: "success",
-      data: { user },
-    });
-  } catch (error: unknown) {
-    const statusCode = error instanceof AppError ? error.statusCode : 400;
-    const message =
-      error instanceof Error ? error.message : "Internal server error";
+  const data = getValidatedData<RegisterInput>(req);
+  const user = await AuthService.register(data);
 
-    res.status(statusCode).json({
-      status: "error",
-      message,
-    });
-  }
+  res.status(201).json({
+    status: "success",
+    data: { user },
+  });
 };
 
 export const login = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const userAgent = req.headers["user-agent"];
-    const ipAddress = req.ip;
+  const userAgent = req.headers["user-agent"];
+  const ipAddress = req.ip;
+  const data = getValidatedData<LoginInput>(req);
+  const { user, accessToken, refreshToken } = await AuthService.login(
+    data,
+    userAgent,
+    ipAddress,
+  );
 
-    const { user, accessToken, refreshToken } = await AuthService.login(
-      req.body,
-      userAgent,
-      ipAddress,
-    );
+  res.cookie("refreshToken", refreshToken, {
+    httpOnly: true,
+    // secure: process.env.NODE_ENV === 'production',
+    sameSite: "strict",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
 
-    res.cookie("refreshToken", refreshToken, {
-      httpOnly: true,
-      // secure: process.env.NODE_ENV === 'production',
-      sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-
-    res.status(200).json({
-      status: "success",
-      data: { user, accessToken },
-    });
-  } catch (error: unknown) {
-    if (error instanceof AppError && error.message === "Invalid credentials") {
-      res
-        .status(error.statusCode)
-        .json({ status: "error", message: error.message });
-      return;
-    }
-
-    res.status(500).json({ status: "error", message: "Internal server error" });
-  }
+  res.status(200).json({
+    status: "success",
+    data: { user, accessToken },
+  });
 };
 
 export const refreshHandler = async (
   req: Request,
   res: Response,
 ): Promise<void> => {
-  try {
-    const { refreshToken } = req.cookies;
+  const { refreshToken } = req.cookies;
 
-    if (!refreshToken) {
-      res.status(401).json({
-        status: "error",
-        message: "No refresh token provided",
-      });
-      return;
-    }
-
-    const { accessToken, newRefreshToken } =
-      await AuthService.refreshToken(refreshToken);
-
-    // set the NEW refresh token cookie
-    res.cookie("refreshToken", newRefreshToken, {
-      httpOnly: true,
-      // secure : proccess.env.NODE_ENV === 'production',
-      sameSite: "strict",
-      maxAge: 7 * 24 * 60 * 60 * 1000,
-    });
-
-    res.status(200).json({
-      status: "success",
-      data: { accessToken },
-    });
-  } catch {
-    res.clearCookie("refreshToken");
-    res.status(401).json({
-      status: "error",
-      message: "Session expired, please log in agian",
-    });
+  if (!refreshToken) {
+    throw new AppError("No refresh token provided", 401);
   }
+
+  const { accessToken, newRefreshToken } = await AuthService.refreshToken(refreshToken);
+
+  // set the NEW refresh token cookie
+  res.cookie("refreshToken", newRefreshToken, {
+    httpOnly: true,
+    // secure : proccess.env.NODE_ENV === 'production',
+    sameSite: "strict",
+    maxAge: 7 * 24 * 60 * 60 * 1000,
+  });
+
+  res.status(200).json({
+    status: "success",
+    data: { accessToken },
+  });
 };
 
 export const logout = async (
   req: AuthRequest,
   res: Response,
 ): Promise<void> => {
-  try {
-    const sessionId = req.user?.sessionId;
-    if (sessionId) {
-      await AuthService.logout(sessionId);
-    }
-
-    res.clearCookie("refreshToken");
-    res.status(200).json({
-      status: "success",
-      message: "Logged out successfully",
-    });
-  } catch {
-    res.status(500).json({
-      status: "error",
-      message: "Internal server error",
-    });
+  const sessionId = req.user?.sessionId;
+  if (sessionId) {
+    await AuthService.logout(sessionId);
   }
+
+  res.clearCookie("refreshToken");
+  res.status(200).json({
+    status: "success",
+    message: "Logged out successfully",
+  });
 };
 
 export const getProfile = async (
@@ -139,107 +108,67 @@ export const verifyEmail = async (
   req: Request,
   res: Response,
 ): Promise<void> => {
-  try {
-    const { token } = req.params;
-    // Validate token
-    if (!token || typeof token !== "string") {
-      res.status(400).json({
-        status: "error",
-        message: "Verification token is missing.",
-      });
-      return;
-    }
-    // Find user with same token
-    const [user] = await db
-      .select()
-      .from(users)
-      .where(eq(users.verificationToken, token))
-      .limit(1);
+  const data = getValidatedData<VerifyEmailParamsInput>(req);
+  const { token } = data;
 
-    if (!user) {
-      res.status(400).json({
-        status: "error",
-        message: "Invalid or expired verification token",
-      });
-      return;
-    }
-    // update user set verified true
-    await db
-      .update(users)
-      .set({
-        isVerified: true,
-        verificationToken: null,
-      })
-      .where(eq(users.id, user.id));
-
-    res.status(200).json({
-      status: "success",
-      message: "Email verified successfully!",
-    });
-  } catch {
-    res.status(500).json({
-      status: "error",
-      message: "Internal server error",
-    });
+  if (!token) {
+    throw new AppError("Verification token is required", 400);
   }
+
+  // Find user with same token
+  const [user] = await db
+    .select()
+    .from(users)
+    .where(eq(users.verificationToken, token))
+    .limit(1);
+
+  if (!user) {
+    throw new AppError("Invalid or expired verification token", 400);
+  }
+
+  // update user set verified true
+  await db
+    .update(users)
+    .set({
+      isVerified: true,
+      verificationToken: null,
+    })
+    .where(eq(users.id, user.id));
+
+  res.status(200).json({
+    status: "success",
+    message: "Email verified successfully!",
+  });
 };
 
 export const forgotPassword = async (
   req: Request,
   res: Response,
 ): Promise<void> => {
-  try {
-    const { email } = req.body;
-    await AuthService.forgotPassword(email);
+  const data = getValidatedData<ForgotPasswordInput>(req);
+  const { email } = data;
+  await AuthService.forgotPassword(email);
 
-    res.status(200).json({
-      status: "success",
-      message:
-        "If an account with that email exists, a reset link has been sent.",
-    });
-  } catch {
-    res.status(500).json({
-      status: "error",
-      message: "Internal server error",
-    });
-  }
+  res.status(200).json({
+    status: "success",
+    message:
+      "If an account with that email exists, a reset link has been sent.",
+  });
 };
 
 export const resetPassword = async (
   req: Request,
   res: Response,
 ): Promise<void> => {
-  try {
-    const { token } = req.params;
-    const { newPassword } = req.body;
+  const params = getValidatedData<ResetPasswordParamsInput>(req);
+  const body = getValidatedData<resetPasswordInput>(req);
+  const { token } = params;
+  const { newPassword } = body;
 
-    if (!token || typeof token !== "string") {
-      res.status(400).json({
-        status: "error",
-        message: "Invalid token",
-      });
-      return;
-    }
+  await AuthService.resetPassword(token, newPassword);
 
-    await AuthService.resetPassword(token, newPassword);
-
-    res.status(200).json({
-      status: "success",
-      message: "Password has been successfully reset. You can now log in.",
-    });
-  } catch (error: unknown) {
-    if (
-      error instanceof AppError &&
-      error.message === "Invallid or expired password reset token"
-    ) {
-      res
-        .status(error.statusCode)
-        .json({ status: "error", message: error.message });
-      return;
-    }
-    res.status(500).json({
-      status: "error",
-      message: "Internal server error",
-    });
-  }
+  res.status(200).json({
+    status: "success",
+    message: "Password has been successfully reset. You can now log in.",
+  });
 };

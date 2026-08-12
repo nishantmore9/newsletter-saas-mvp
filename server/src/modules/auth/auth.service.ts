@@ -1,15 +1,15 @@
 import bcrypt from "bcryptjs";
 import { eq } from "drizzle-orm";
-import { db } from "../db/index.js";
-import { users, sessions } from "../db/schema.js";
+import { db } from "../../db/index.js";
+import { users, sessions } from "../../db/schema.js";
 import crypto from "crypto";
 import jwt from "jsonwebtoken";
-import { RegisterInput, LoginInput } from "../modules/auth/auth.schema.js";
-import { env } from "../config/env.js";
-import { EmailService } from "./email.service.js";
-import { AppError } from "../utils/ApiError.js";
-import UserRepo from "../modules/users/users.repository.js";
-import PublicationRepo from "../modules/publications/publications.repository.js";
+import { RegisterInput, LoginInput } from "./auth.schema.js";
+import { env } from "../../config/env.js";
+import { EmailService } from "../../services/email.service.js";
+import { AppError } from "../../utils/ApiError.js";
+import UserRepo from "../users/users.repository.js";
+import PublicationRepo from "../publications/publications.repository.js";
 
 const AuthService = {
   register: async (input: RegisterInput) => {
@@ -27,19 +27,7 @@ const AuthService = {
     // Generate a randome verification token
     const verificationToken = crypto.randomBytes(32).toString("hex");
 
-    // Insert new user into the database
-    // const [newUser] = await db
-    //   .insert(users)
-    //   .values({
-    //     email,
-    //     passwordHash,
-    //     verificationToken,
-    //   })
-    //   .returning({
-    //     id: users.id,
-    //     email: users.email,
-    //     createdAt: users.createdAt,
-    //   });
+    // crete user and publication in a transaction
     const newUser = await db.transaction(async (tx) => {
       const user = await UserRepo.create({email, passwordHash, verificationToken}, tx);
       if(!user?.id) {

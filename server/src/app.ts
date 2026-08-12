@@ -4,6 +4,7 @@ import { httpLogger } from "./middlewares/httpLogger.js";
 import { errorHandler } from "./middlewares/errorHandler.js";
 
 import authRoutes from "./modules/auth/auth.route.js";
+import subscriberRoutes from "./modules/subscribers/subscribers.route.js";
 
 const app: Express = express();
 
@@ -13,6 +14,7 @@ app.use(cookieParser());
 
 // Routes
 app.use("/api/auth", authRoutes);
+app.use("/api/subscribers", subscriberRoutes);
 
 app.get("/", (req: Request, res: Response) => {
   res.status(200).json({
